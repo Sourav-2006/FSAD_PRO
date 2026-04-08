@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './App.css'
+import { supabase } from './supabaseClient.js'
 
 const ROLES = ['Admin', 'Donor', 'Recipient', 'Logistics Coordinator']
 
@@ -12,6 +13,38 @@ function App() {
   const [donations, setDonations] = useState([])
   const [requests, setRequests] = useState([])
   const [logisticsTasks, setLogisticsTasks] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  const fetchData = async () => {
+    try {
+      const [drivesRes, donationsRes, requestsRes, tasksRes] = await Promise.all([
+        supabase.from('drives').select('*'),
+        supabase.from('donations').select('*'),
+        supabase.from('requests').select('*'),
+        supabase.from('logistics_tasks').select('*')
+      ])
+
+      if (drivesRes.error) console.error('Drives error:', drivesRes.error)
+      else setDrives(drivesRes.data || [])
+
+      if (donationsRes.error) console.error('Donations error:', donationsRes.error)
+      else setDonations(donationsRes.data || [])
+
+      if (requestsRes.error) console.error('Requests error:', requestsRes.error)
+      else setRequests(requestsRes.data || [])
+
+      if (tasksRes.error) console.error('Tasks error:', tasksRes.error)
+      else setLogisticsTasks(tasksRes.data || [])
+    } catch (error) {
+      console.error('Error fetching data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleAuthSuccess = (role) => {
     const finalRole = role || 'Donor'
@@ -19,6 +52,131 @@ function App() {
     setActiveRole(finalRole)
     setIsAuthenticated(true)
   }
+
+  const addDrive = async (drive) => {
+    const { data, error } = await supabase.from('drives').insert(drive).select()
+    if (error) {
+      console.error('Error adding drive:', error)
+      return
+    }
+    setDrives([...drives, ...data])
+  }
+
+  const addDonation = async (donation) => {
+    const { data, error } = await supabase.from('donations').insert(donation).select()
+    if (error) {
+      console.error('Error adding donation:', error)
+      return
+    }
+    setDonations([...donations, ...data])
+  }
+
+  const addRequest = async (request) => {
+    const { data, error } = await supabase.from('requests').insert(request).select()
+    if (error) {
+      console.error('Error adding request:', error)
+      return
+    }
+    setRequests([...requests, ...data])
+  }
+
+  const addTask = async (task) => {
+    const { data, error } = await supabase.from('logistics_tasks').insert(task).select()
+    if (error) {
+      console.error('Error adding task:', error)
+      return
+    }
+    setLogisticsTasks([...logisticsTasks, ...data])
+  }
+
+  const updateTaskStatus = async (id, status) => {
+    const { error } = await supabase.from('logistics_tasks').update({ status }).eq('id', id)
+    if (error) {
+      console.error('Error updating task:', error)
+      return
+    }
+    setLogisticsTasks(logisticsTasks.map(task =>
+      task.id === id ? { ...task, status } : task
+    ))
+  }
+
+  if (loading) {
+    return <div className="loading">Loading ReliefConnect...</div>
+  }
+
+  return (
+    <div className="app">
+      <header className="app-header">
+        <h1>ReliefConnect</h1>
+        <p className="subtitle">
+          Donate essentials, coordinate logistics, and support communities in need.
+        </p>
+      </header>
+
+      {!isAuthenticated && (
+        <AuthView
+          onAuthSuccess={handleAuthSuccess}
+          defaultRole={currentUserRole}
+        />
+      )}
+
+      {isAuthenticated && (
+        <>
+          <section className="role-tabs">
+            {ROLES.map((role) => (
+              <button
+                key={role}
+                className={`tab-button ${
+                  activeRole === role ? 'tab-button-active' : ''
+                }`}
+                onClick={() => setActiveRole(role)}
+              >
+                {role}
+              </button>
+            ))}
+          </section>
+
+          <main className="app-main">
+            {activeRole === 'Admin' && (
+              <AdminView
+                drives={drives}
+                donations={donations}
+                requests={requests}
+                onCreateDrive={addDrive}
+              />
+            )}
+
+            {activeRole === 'Donor' && (
+              <DonorView
+                drives={drives}
+                donations={donations}
+                onAddDonation={addDonation}
+              />
+            )}
+
+            {activeRole === 'Recipient' && (
+              <RecipientView
+                requests={requests}
+                onAddRequest={addRequest}
+              />
+            )}
+
+            {activeRole === 'Logistics Coordinator' && (
+              <LogisticsView
+                drives={drives}
+                donations={donations}
+                requests={requests}
+                logisticsTasks={logisticsTasks}
+                onAddTask={addTask}
+                onUpdateTaskStatus={updateTaskStatus}
+              />
+            )}
+          </main>
+        </>
+      )}
+    </div>
+  )
+}
 
   return (
     <div className="app">
